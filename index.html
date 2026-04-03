@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ROE Visual - Pro Configurator v6.5 (Data Driven)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --sidebar-bg: #f8fafc;
+      --sidebar-border: #cbd5e1;
+      --accent: #0052cc;
+      --bg: #f1f5f9;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --input-bg: #fdfeff;
+      --select-focus: #ebf5ff;
+    }
+
+    body { font-family: 'Inter', sans-serif; margin: 0; background: var(--bg); display: flex; height: 100vh; overflow: hidden; color: var(--text-main); }
+
+    /* 左侧配置栏 */
+    .config-panel { width: 420px; background: var(--sidebar-bg); padding: 25px; overflow-y: auto; border-right: 1px solid var(--sidebar-border); z-index: 10; }
+    .config-panel h2 { font-size: 1.1rem; margin: 0 0 20px 0; color: var(--accent); padding-bottom: 15px; border-bottom: 1px solid var(--sidebar-border); }
+    
+    .form-group { margin-bottom: 18px; }
+    label.field-label { display: block; font-size: 0.7rem; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; }
+    
+    select, input[type="number"] { 
+      width: 100%; 
+      background: var(--input-bg); 
+      border: 2px solid var(--sidebar-border); 
+      border-radius: 8px; 
+      padding: 11px; 
+      color: var(--text-main); 
+      font-size: 0.85rem; 
+      font-weight: 600;
+      box-sizing: border-box; 
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23475569'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      background-size: 16px;
+    }
+    
+    #voltage { border-color: #93c5fd; background-color: #f0f9ff; }
+    input[type="number"] { background-image: none; }
+    select:focus { outline: none; border-color: var(--accent); background-color: var(--select-focus); box-shadow: 0 0 0 4px rgba(0, 82, 204, 0.1); }
+    
+    .redundancy-row { display: flex; gap: 15px; margin-top: 10px; padding: 12px; background: #fff; border-radius: 6px; border: 1.5px solid var(--sidebar-border); }
+    .checkbox-item { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; cursor: pointer; font-weight: 500; }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .btn-primary { background: var(--accent); color: white; border: none; padding: 15px; width: 100%; border-radius: 8px; font-weight: 700; cursor: pointer; text-transform: uppercase; margin-top: 10px; }
+
+    /* 右侧主视窗 */
+    .main-viewport { flex: 1; padding: 30px; overflow-y: auto; }
+    .dashboard-header { background: white; border-radius: 12px; padding: 20px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 25px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05); }
+    .stat-item .label { font-size: 0.65rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; }
+    .stat-item .value { font-size: 1.3rem; font-weight: 800; color: var(--text-main); margin-top: 2px; }
+    #resOrder { color: #0052cc; }
+
+    .bom-card { background: white; border-radius: 12px; box-shadow: 0 8px 20px rgba(0, 0, 0, 0.05); overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #f8fafc; padding: 15px; text-align: left; font-size: 0.7rem; color: var(--text-muted); border-bottom: 1.5px solid #edf2f7; text-transform: uppercase; }
+    td { padding: 15px; border-bottom: 1px solid #f8fafc; font-size: 0.85rem; }
+
+    .bom-footer { padding: 20px; background: #fff; border-top: 1px solid #edf2f7; display: flex; justify-content: flex-end; }
+    .btn-export { background: #059669; color: white; border: none; padding: 12px 25px; border-radius: 8px; font-weight: 700; cursor: pointer; }
+
+    .tag-layout { color: #3182ce; font-size: 0.65rem; font-weight: 700; border: 1px solid #bee3f8; padding: 2px 5px; border-radius: 4px; background: #ebf8ff; }
+    .tag-order { color: #38a169; font-size: 0.65rem; font-weight: 700; border: 1px solid #c6f6d5; padding: 2px 5px; border-radius: 4px; background: #f0fff4; }
+    
+    .loading-overlay { font-size: 0.8rem; color: var(--accent); font-weight: 600; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+
+  <aside class="config-panel">
+    <h2>ROE Pro Configurator</h2>
+    <div id="loadingStatus" class="loading-overlay">Checking data source...</div>
+
+    <div class="form-group">
+      <label class="field-label">1. Product Selection</label>
+      <select id="mainCat" onchange="updateSubCats()" style="margin-bottom: 8px;">
+        <option>Loading...</option>
+      </select>
+      <select id="subCat" onchange="updateModels()" style="margin-bottom: 8px;"></select>
+      <select id="modelSelect"></select>
+    </div>
+
+    <div class="form-group" style="border-top: 1.5px solid #e2e8f0; padding-top: 15px;">
+      <label class="field-label">2. Order Total</label>
+      <input type="number" id="orderQty" placeholder="Enter panel quantity..." oninput="autoPlan()">
+    </div>
+
+    <div class="grid-2">
+      <div class="form-group"><label class="field-label">Width (W)</label><input type="number" id="width" value="0"></div>
+      <div class="form-group"><label class="field-label">Height (H)</label><input type="number" id="height" value="0"></div>
+    </div>
+
+    <div class="form-group">
+      <label class="field-label">3. Install & Packaging</label>
+      <select id="installType" style="margin-bottom: 8px;">
+        <option value="Hanging">Hanging (吊装)</option>
+        <option value="Stacking">Stacking (座装)</option>
+      </select>
+      <select id="packaging">
+        <option value="FlightCase">Flight Case (6-in-1)</option>
+        <option value="Dolly">Dolly (12-in-1)</option>
+        <option value="Carton">Carton (1-in-1)</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+        <label class="field-label">4. Voltage</label>
+        <select id="voltage">
+          <option value="220V">220V</option>
+          <option value="100V">100V</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+      <label class="field-label">5. Control System</label>
+      <select id="controllerBrand">
+        <option value="Brompton">Brompton Technology</option>
+        <option value="MVR">MVR (Megapixel)</option>
+        <option value="Nova">Novastar</option>
+        <option value="Colorlight">Colorlight</option>
+      </select>
+      <div class="redundancy-row">
+        <label class="checkbox-item"><input type="checkbox" id="cableRedundancy"> Cable redundancy</label>
+        <label class="checkbox-item"><input type="checkbox" id="procRedundancy"> Processor redundancy</label>
+      </div>
+    </div>
+
+    <button class="btn-primary" onclick="generate()">Generate BOM</button>
+  </aside>
+
+  <main class="main-viewport">
+    <div id="dashboard" class="dashboard-header" style="display: none;">
+      <div class="stat-item"><div class="label">Total Order</div><div class="value" id="resOrder">0</div></div>
+      <div class="stat-item"><div class="label">Layout Qty</div><div class="value" id="resLayoutQty">0</div></div>
+      <div class="stat-item"><div class="label">Processor</div><div class="value" id="resProcessor">-</div></div>
+      <div class="stat-item"><div class="label">Voltage</div><div class="value" id="resVoltage">-</div></div>
+    </div>
+
+    <div class="bom-card">
+      <table id="bomTable">
+        <thead><tr><th>PART DESCRIPTION (CODE)</th><th>QTY</th><th>UNIT & BASIS</th></tr></thead>
+        <tbody id="bomList"><tr><td colspan="3" style="text-align: center; color: #94a3b8; padding: 100px;">Waiting for configuration...</td></tr></tbody>
+      </table>
+      <div class="bom-footer" id="bomFooter" style="display: none;">
+        <button class="btn-export" onclick="exportToExcel()">EXPORT EXCEL</button>
+      </div>
+    </div>
+  </main>
+
+<script>
+  // 1. 数据源链接
+  const GITHUB_DATA_URL = 'https://raw.githubusercontent.com/davyjia007/calculator/refs/heads/main/products.json';
+  let fullProductData = {};
+
+  // 2. 异步加载 GitHub 数据
+  async function fetchDataSource() {
+    const status = document.getElementById("loadingStatus");
+    try {
+      // 使用时间戳防止缓存
+      const response = await fetch(`${GITHUB_DATA_URL}?t=${Date.now()}`);
+      if (!response.ok) throw new Error('Network error');
+      
+      fullProductData = await response.json();
+      
+      status.innerText = "● Data Source Active (GitHub)";
+      status.style.color = "#059669";
+
+      initMainCat();
+    } catch (error) {
+      console.error(error);
+      status.innerText = "○ Error: Could not load data";
+      status.style.color = "#dc2626";
+      alert("Failed to load product data from GitHub. Please check your connection.");
+    }
+  }
+
+  // 3. 下拉联动逻辑
+  function initMainCat() {
+    const main = document.getElementById("mainCat");
+    main.innerHTML = "";
+    Object.keys(fullProductData.tree).forEach(m => main.options.add(new Option(m, m)));
+    updateSubCats();
+  }
+
+  function updateSubCats() {
+    const mainVal = document.getElementById("mainCat").value;
+    const sub = document.getElementById("subCat");
+    sub.innerHTML = "";
+    const subs = fullProductData.tree[mainVal];
+    if (subs) {
+      Object.keys(subs).forEach(s => sub.options.add(new Option(s, s)));
+    }
+    updateModels();
+  }
+
+  function updateModels() {
+    const mainVal = document.getElementById("mainCat").value;
+    const subVal = document.getElementById("subCat").value;
+    const model = document.getElementById("modelSelect");
+    model.innerHTML = "";
+    const models = fullProductData.tree[mainVal][subVal];
+    if (models) {
+      models.forEach(m => model.options.add(new Option(m, m)));
+    }
+  }
+
+  // 4. 自动布局计算
+  function autoPlan() {
+    const order = Number(document.getElementById("orderQty").value);
+    if (!order || order <= 0) return;
+    let bestW = Math.ceil(Math.sqrt(order * 2)); // 默认大致 2:1
+    let bestH = Math.ceil(order / bestW);
+    document.getElementById("width").value = bestW;
+    document.getElementById("height").value = bestH;
+  }
+
+  // 5. 生成 BOM 核心逻辑
+  function generate() {
+    const orderQty = Number(document.getElementById("orderQty").value);
+    if (!orderQty) return alert("Please enter Order Total");
+    
+    const modelName = document.getElementById("modelSelect").value;
+    const w = Number(document.getElementById("width").value);
+    const h = Number(document.getElementById("height").value);
+    const voltage = document.getElementById("voltage").value;
+    const brand = document.getElementById("controllerBrand").value;
+    const packing = document.getElementById("packaging").value;
+
+    // 获取 JSON 中的物料详情
+    const info = fullProductData.details[modelName];
+    if (!info) return alert("Product data missing!");
+
+    let listHtml = "";
+    const addItem = (code, desc, qty, unit, basis) => {
+      listHtml += `<tr>
+        <td><strong>[${code}]</strong> ${desc}</td>
+        <td><strong>${qty}</strong></td>
+        <td>${unit} <span class="${basis==='ORDER'?'tag-order':'tag-layout'}">${basis}</span></td>
+      </tr>`;
+    };
+
+    // --- 开始组装清单 ---
+    // 1. 主屏信息（引用 JSON 数据）
+    addItem(info.code, info.desc, orderQty, info.unit, "ORDER");
+
+    // 2. 包装系统
+    const pQty = packing === "FlightCase" ? Math.ceil(orderQty/6) : (packing === "Dolly" ? Math.ceil(orderQty/12) : orderQty);
+    addItem("PACK-SYS", `${packing} Packaging System`, pQty, "EA", "ORDER");
+
+    // 3. 备件包
+    addItem("SPARE-KIT", "Standard Spare Parts Kit (2%)", Math.ceil(orderQty * 0.02), "KIT", "ORDER");
+
+    // 4. 结构配件
+    const installType = document.getElementById("installType").value;
+    addItem("STRUCT-01", installType === "Hanging" ? "Hanging Bar" : "Stacking Base", w, "PCS", "LAYOUT");
+
+    // 5. 线缆与处理器
+    addItem("CABLE-PWR", `Main Power Cable (${voltage})`, w, "PCS", "LAYOUT");
+    addItem("PROC-VID", `${brand} Video Processor`, document.getElementById("procRedundancy").checked ? 2 : 1, "SET", "LAYOUT");
+
+    // 更新 UI
+    document.getElementById("bomList").innerHTML = listHtml;
+    document.getElementById("dashboard").style.display = "grid";
+    document.getElementById("bomFooter").style.display = "flex";
+    
+    document.getElementById("resOrder").innerText = orderQty;
+    document.getElementById("resLayoutQty").innerText = (w * h);
+    document.getElementById("resProcessor").innerText = brand.split(' ')[0];
+    document.getElementById("resVoltage").innerText = voltage;
+  }
+
+  function exportToExcel() {
+    alert("Exporting BOM to Excel...");
+  }
+
+  // 页面启动加载数据
+  window.onload = fetchDataSource;
+</script>
+</body>
+</html>
