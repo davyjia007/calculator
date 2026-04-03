@@ -20,7 +20,6 @@
 
     body { font-family: 'Inter', sans-serif; margin: 0; background: var(--bg); display: flex; height: 100vh; overflow: hidden; color: var(--text-main); }
 
-    /* 左侧配置栏 */
     .config-panel { width: 420px; background: var(--sidebar-bg); padding: 25px; overflow-y: auto; border-right: 1px solid var(--sidebar-border); z-index: 10; }
     .config-panel h2 { font-size: 1.1rem; margin: 0 0 20px 0; color: var(--accent); padding-bottom: 15px; border-bottom: 1px solid var(--sidebar-border); }
     
@@ -71,7 +70,6 @@
     .tag-layout { color: #3182ce; font-size: 0.65rem; font-weight: 700; border: 1px solid #bee3f8; padding: 2px 5px; border-radius: 4px; background: #ebf8ff; }
     .tag-order { color: #38a169; font-size: 0.65rem; font-weight: 700; border: 1px solid #c6f6d5; padding: 2px 5px; border-radius: 4px; background: #f0fff4; }
     
-    /* 加载状态提示 */
     .loading-bar { margin-bottom: 20px; padding: 12px; background: #f1f5f9; border-radius: 8px; font-size: 0.8rem; text-align: center; }
     .loading-error { background: #fee2e2; color: #dc2626; }
     .loading-success { background: #dcfce7; color: #059669; }
@@ -82,14 +80,19 @@
   <aside class="config-panel">
     <h2>ROE Pro Configurator</h2>
 
-    <!-- 数据加载状态显示 -->
     <div id="loadingStatus" class="loading-bar">⏳ 正在从GitHub加载产品数据...</div>
 
     <div class="form-group">
       <label class="field-label">1. Product Selection</label>
-      <select id="mainCat" onchange="updateSubCats()" style="margin-bottom: 8px;"></select>
-      <select id="subCat" onchange="updateModels()" style="margin-bottom: 8px;"></select>
-      <select id="modelSelect"></select>
+      <select id="mainCat" onchange="updateSubCats()" style="margin-bottom: 8px;">
+        <option value="">-- 加载中 --</option>
+      </select>
+      <select id="subCat" onchange="updateModels()" style="margin-bottom: 8px;">
+        <option value="">-- 请先选择分类 --</option>
+      </select>
+      <select id="modelSelect">
+        <option value="">-- 请先选择子分类 --</option>
+      </select>
     </div>
 
     <div class="form-group" style="border-top: 1.5px solid #e2e8f0; padding-top: 15px;">
@@ -160,11 +163,10 @@
   </main>
 
 <script>
-  // ============ 配置区域 ============
-  // 替换为你的GitHub链接
+  // ============ GitHub数据源配置 ============
   const GITHUB_DATA_URL = 'https://raw.githubusercontent.com/davyjia007/calculator/refs/heads/main/products.json';
   
-  // 备用数据（当网络请求失败时使用）
+  // 备用数据
   const FALLBACK_DATA = {
     "Rental": {
       "Black Onyx/Pearl": ["BP2V2", "BP2"],
@@ -182,58 +184,46 @@
   };
   
   let fullProductData = {};
-  let isLoading = true;
 
   // ============ 从GitHub加载数据 ============
   async function loadProductsFromGitHub() {
     const statusDiv = document.getElementById('loadingStatus');
     
     try {
-      console.log('开始加载数据:', GITHUB_DATA_URL);
       statusDiv.innerHTML = '⏳ 正在从GitHub加载产品数据...';
       statusDiv.className = 'loading-bar';
       
-      const response = await fetch(GITHUB_DATA_URL, {
-        method: 'GET',
-        mode: 'cors',
-        cache: 'no-cache'
-      });
-      
-      console.log('响应状态:', response.status);
+      const response = await fetch(GITHUB_DATA_URL);
       
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(`HTTP ${response.status}`);
       }
       
       const data = await response.json();
       console.log('加载到的数据:', data);
       
-      // 验证数据格式
       if (validateProductData(data)) {
         fullProductData = data;
-        isLoading = false;
-        statusDiv.innerHTML = `✅ 数据加载成功！已从GitHub加载 ${countProducts(data)} 个产品配置`;
+        statusDiv.innerHTML = `✅ 数据加载成功！已加载 ${countProducts(data)} 个产品配置`;
         statusDiv.className = 'loading-bar loading-success';
         
-        // 刷新下拉菜单
-        updateSubCats();
+        // 关键：刷新所有下拉菜单
+        refreshAllSelects();
       } else {
-        throw new Error('数据格式无效，请检查JSON结构');
+        throw new Error('数据格式无效');
       }
       
     } catch (error) {
-      console.error('从GitHub加载失败:', error);
-      statusDiv.innerHTML = `⚠️ 无法加载GitHub数据: ${error.message}，使用本地备用数据`;
+      console.error('加载失败:', error);
+      statusDiv.innerHTML = `⚠️ 加载失败: ${error.message}，使用备用数据`;
       statusDiv.className = 'loading-bar loading-error';
       
-      // 使用备用数据
       fullProductData = JSON.parse(JSON.stringify(FALLBACK_DATA));
-      isLoading = false;
-      updateSubCats();
+      refreshAllSelects();
     }
   }
   
-  // 验证产品数据结构
+  // 验证数据格式
   function validateProductData(data) {
     if (!data || typeof data !== 'object') return false;
     const categories = Object.keys(data);
@@ -242,10 +232,8 @@
     for (let category of categories) {
       const subCategories = data[category];
       if (typeof subCategories !== 'object') return false;
-      
       for (let subCat of Object.keys(subCategories)) {
-        const models = subCategories[subCat];
-        if (!Array.isArray(models) || models.length === 0) return false;
+        if (!Array.isArray(subCategories[subCat]) || subCategories[subCat].length === 0) return false;
       }
     }
     return true;
@@ -262,38 +250,89 @@
     return count;
   }
   
-  // 手动刷新数据
-  function refreshData() {
-    loadProductsFromGitHub();
-  }
-
-  // ============ 原有的UI更新函数 ============
-  function updateSubCats() {
-    const main = document.getElementById("mainCat").value;
-    const sub = document.getElementById("subCat");
-    if (!sub) return;
-    sub.innerHTML = "";
+  // ============ 核心：刷新所有下拉菜单 ============
+  function refreshAllSelects() {
+    const mainSelect = document.getElementById('mainCat');
+    if (!mainSelect) return;
     
-    if (!fullProductData[main]) {
-      console.warn('没有找到分类:', main);
+    // 清空并重新填充主分类
+    mainSelect.innerHTML = '';
+    
+    const categories = Object.keys(fullProductData);
+    console.log('加载到的分类:', categories);
+    
+    if (categories.length === 0) {
+      mainSelect.innerHTML = '<option value="">无可用分类</option>';
       return;
     }
     
-    Object.keys(fullProductData[main]).forEach(s => sub.options.add(new Option(s, s)));
+    // 添加主分类选项
+    categories.forEach(cat => {
+      const option = document.createElement('option');
+      option.value = cat;
+      option.textContent = cat;
+      mainSelect.appendChild(option);
+    });
+    
+    // 触发更新子分类
+    updateSubCats();
+  }
+  
+  // 更新子分类下拉菜单
+  function updateSubCats() {
+    const mainSelect = document.getElementById('mainCat');
+    const subSelect = document.getElementById('subCat');
+    const modelSelect = document.getElementById('modelSelect');
+    
+    const selectedMain = mainSelect.value;
+    
+    if (!selectedMain || !fullProductData[selectedMain]) {
+      subSelect.innerHTML = '<option value="">-- 无子分类 --</option>';
+      modelSelect.innerHTML = '<option value="">-- 请先选择子分类 --</option>';
+      return;
+    }
+    
+    const subCategories = Object.keys(fullProductData[selectedMain]);
+    
+    // 清空并重新填充子分类
+    subSelect.innerHTML = '';
+    subCategories.forEach(sub => {
+      const option = document.createElement('option');
+      option.value = sub;
+      option.textContent = sub;
+      subSelect.appendChild(option);
+    });
+    
+    // 更新型号
     updateModels();
   }
   
+  // 更新型号下拉菜单
   function updateModels() {
-    const main = document.getElementById("mainCat").value;
-    const sub = document.getElementById("subCat").value;
-    const model = document.getElementById("modelSelect");
-    model.innerHTML = "";
+    const mainSelect = document.getElementById('mainCat');
+    const subSelect = document.getElementById('subCat');
+    const modelSelect = document.getElementById('modelSelect');
     
-    if (!fullProductData[main] || !fullProductData[main][sub]) return;
+    const selectedMain = mainSelect.value;
+    const selectedSub = subSelect.value;
     
-    fullProductData[main][sub].forEach(m => model.options.add(new Option(m, m)));
+    if (!selectedMain || !selectedSub || !fullProductData[selectedMain] || !fullProductData[selectedMain][selectedSub]) {
+      modelSelect.innerHTML = '<option value="">-- 无可用型号 --</option>';
+      return;
+    }
+    
+    const models = fullProductData[selectedMain][selectedSub];
+    
+    modelSelect.innerHTML = '';
+    models.forEach(model => {
+      const option = document.createElement('option');
+      option.value = model;
+      option.textContent = model;
+      modelSelect.appendChild(option);
+    });
   }
 
+  // ============ 其他功能函数 ============
   function autoPlan() {
     const order = Number(document.getElementById("orderQty").value);
     if (!order || order <= 0) return;
@@ -334,6 +373,11 @@
     const brand = document.getElementById("controllerBrand").value;
     const packing = document.getElementById("packaging").value;
 
+    if (!model || model === '-- 无可用型号 --') {
+      alert("请先选择产品型号");
+      return;
+    }
+
     let listHtml = "";
     const addItem = (name, qty, basis) => {
       listHtml += `<tr><td>${name}</td><td><strong>${qty}</strong></td><td><span class="${basis==='ORDER'?'tag-order':'tag-layout'}">${basis}</span></td></tr>`;
@@ -361,20 +405,8 @@
     alert("Exporting Data to Excel...");
   }
   
-  // 初始化下拉菜单（先设置空选项，等数据加载完成后再填充）
-  function initSelects() {
-    const mainSelect = document.getElementById("mainCat");
-    if (mainSelect) {
-      mainSelect.innerHTML = '';
-      // 先添加空选项，数据加载后会更新
-    }
-  }
-  
-  // 页面启动
-  (async function() {
-    initSelects();
-    await loadProductsFromGitHub();
-  })();
+  // ============ 页面启动 ============
+  loadProductsFromGitHub();
 </script>
 </body>
 </html>
