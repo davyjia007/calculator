@@ -1,0 +1,40 @@
+{
+  "Rental": {
+    "Black Onyx/Pearl": [
+      "BP2V2",
+      "BP2"
+    ],
+    "Carbon (CB)": [
+      "CB3",
+      "CB5",
+      "CB8"
+    ],
+    "Ruby (RB)": [
+      "RB1.2",
+      "RB1.5",
+      "RB2.3",
+      "RB2.6"
+    ],
+    "Vanish": [
+      "V5S",
+      "V8S"
+    ]
+  },
+  "Fixed": {
+    "Amber": [
+      "AB0.9",
+      "AB1.2",
+      "AB1.5"
+    ],
+    "Jasper": [
+      "JA2.6",
+      "JA3.9"
+    ]
+  },
+  "Cecoceco": {
+    "Artmorph": [
+      "AM2",
+      "AM6"
+    ]
+  }
+}
