@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ROE Visual - Pro Configurator v6.5 (Data Driven)</title>
+  <title>ROE Visual - Pro Configurator v6.4</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
   <style>
@@ -54,7 +54,6 @@
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .btn-primary { background: var(--accent); color: white; border: none; padding: 15px; width: 100%; border-radius: 8px; font-weight: 700; cursor: pointer; text-transform: uppercase; margin-top: 10px; }
 
-    /* 右侧主视窗 */
     .main-viewport { flex: 1; padding: 30px; overflow-y: auto; }
     .dashboard-header { background: white; border-radius: 12px; padding: 20px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 25px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05); }
     .stat-item .label { font-size: 0.65rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; }
@@ -72,20 +71,23 @@
     .tag-layout { color: #3182ce; font-size: 0.65rem; font-weight: 700; border: 1px solid #bee3f8; padding: 2px 5px; border-radius: 4px; background: #ebf8ff; }
     .tag-order { color: #38a169; font-size: 0.65rem; font-weight: 700; border: 1px solid #c6f6d5; padding: 2px 5px; border-radius: 4px; background: #f0fff4; }
     
-    .loading-overlay { font-size: 0.8rem; color: var(--accent); font-weight: 600; margin-bottom: 10px; }
+    /* 加载状态提示 */
+    .loading-bar { margin-bottom: 20px; padding: 12px; background: #f1f5f9; border-radius: 8px; font-size: 0.8rem; text-align: center; }
+    .loading-error { background: #fee2e2; color: #dc2626; }
+    .loading-success { background: #dcfce7; color: #059669; }
   </style>
 </head>
 <body>
 
   <aside class="config-panel">
     <h2>ROE Pro Configurator</h2>
-    <div id="loadingStatus" class="loading-overlay">Checking data source...</div>
+
+    <!-- 数据加载状态显示 -->
+    <div id="loadingStatus" class="loading-bar">⏳ 正在从GitHub加载产品数据...</div>
 
     <div class="form-group">
       <label class="field-label">1. Product Selection</label>
-      <select id="mainCat" onchange="updateSubCats()" style="margin-bottom: 8px;">
-        <option>Loading...</option>
-      </select>
+      <select id="mainCat" onchange="updateSubCats()" style="margin-bottom: 8px;"></select>
       <select id="subCat" onchange="updateModels()" style="margin-bottom: 8px;"></select>
       <select id="modelSelect"></select>
     </div>
@@ -148,8 +150,8 @@
 
     <div class="bom-card">
       <table id="bomTable">
-        <thead><tr><th>PART DESCRIPTION (CODE)</th><th>QTY</th><th>UNIT & BASIS</th></tr></thead>
-        <tbody id="bomList"><tr><td colspan="3" style="text-align: center; color: #94a3b8; padding: 100px;">Waiting for configuration...</td></tr></tbody>
+        <thead><tr><th>PART DESCRIPTION</th><th>QTY</th><th>BASIS</th></tr></thead>
+        <tbody id="bomList"><tr><td colspan="3" style="text-align: center; color: #94a3b8; padding: 100px;">等待配置...</td></tr></tbody>
       </table>
       <div class="bom-footer" id="bomFooter" style="display: none;">
         <button class="btn-export" onclick="exportToExcel()">EXPORT EXCEL</button>
@@ -158,117 +160,193 @@
   </main>
 
 <script>
-  // 1. 数据源链接
+  // ============ 配置区域 ============
+  // 替换为你的GitHub链接
   const GITHUB_DATA_URL = 'https://raw.githubusercontent.com/davyjia007/calculator/refs/heads/main/products.json';
+  
+  // 备用数据（当网络请求失败时使用）
+  const FALLBACK_DATA = {
+    "Rental": {
+      "Black Onyx/Pearl": ["BP2V2", "BP2"],
+      "Carbon (CB)": ["CB3", "CB5", "CB8"],
+      "Ruby (RB)": ["RB1.2", "RB1.5", "RB2.3", "RB2.6"],
+      "Vanish": ["V5S", "V8S"]
+    },
+    "Fixed": {
+      "Amber": ["AB0.9", "AB1.2", "AB1.5"],
+      "Jasper": ["JA2.6", "JA3.9"]
+    },
+    "Cecoceco": {
+      "Artmorph": ["AM2", "AM6"]
+    }
+  };
+  
   let fullProductData = {};
+  let isLoading = true;
 
-  // 2. 异步加载 GitHub 数据
-  async function fetchDataSource() {
-    const status = document.getElementById("loadingStatus");
+  // ============ 从GitHub加载数据 ============
+  async function loadProductsFromGitHub() {
+    const statusDiv = document.getElementById('loadingStatus');
+    
     try {
-      // 使用时间戳防止缓存
-      const response = await fetch(`${GITHUB_DATA_URL}?t=${Date.now()}`);
-      if (!response.ok) throw new Error('Network error');
+      console.log('开始加载数据:', GITHUB_DATA_URL);
+      statusDiv.innerHTML = '⏳ 正在从GitHub加载产品数据...';
+      statusDiv.className = 'loading-bar';
       
-      fullProductData = await response.json();
+      const response = await fetch(GITHUB_DATA_URL, {
+        method: 'GET',
+        mode: 'cors',
+        cache: 'no-cache'
+      });
       
-      status.innerText = "● Data Source Active (GitHub)";
-      status.style.color = "#059669";
-
-      initMainCat();
+      console.log('响应状态:', response.status);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('加载到的数据:', data);
+      
+      // 验证数据格式
+      if (validateProductData(data)) {
+        fullProductData = data;
+        isLoading = false;
+        statusDiv.innerHTML = `✅ 数据加载成功！已从GitHub加载 ${countProducts(data)} 个产品配置`;
+        statusDiv.className = 'loading-bar loading-success';
+        
+        // 刷新下拉菜单
+        updateSubCats();
+      } else {
+        throw new Error('数据格式无效，请检查JSON结构');
+      }
+      
     } catch (error) {
-      console.error(error);
-      status.innerText = "○ Error: Could not load data";
-      status.style.color = "#dc2626";
-      alert("Failed to load product data from GitHub. Please check your connection.");
+      console.error('从GitHub加载失败:', error);
+      statusDiv.innerHTML = `⚠️ 无法加载GitHub数据: ${error.message}，使用本地备用数据`;
+      statusDiv.className = 'loading-bar loading-error';
+      
+      // 使用备用数据
+      fullProductData = JSON.parse(JSON.stringify(FALLBACK_DATA));
+      isLoading = false;
+      updateSubCats();
     }
   }
-
-  // 3. 下拉联动逻辑
-  function initMainCat() {
-    const main = document.getElementById("mainCat");
-    main.innerHTML = "";
-    Object.keys(fullProductData.tree).forEach(m => main.options.add(new Option(m, m)));
-    updateSubCats();
+  
+  // 验证产品数据结构
+  function validateProductData(data) {
+    if (!data || typeof data !== 'object') return false;
+    const categories = Object.keys(data);
+    if (categories.length === 0) return false;
+    
+    for (let category of categories) {
+      const subCategories = data[category];
+      if (typeof subCategories !== 'object') return false;
+      
+      for (let subCat of Object.keys(subCategories)) {
+        const models = subCategories[subCat];
+        if (!Array.isArray(models) || models.length === 0) return false;
+      }
+    }
+    return true;
+  }
+  
+  // 统计产品数量
+  function countProducts(data) {
+    let count = 0;
+    for (let category of Object.keys(data)) {
+      for (let subCat of Object.keys(data[category])) {
+        count += data[category][subCat].length;
+      }
+    }
+    return count;
+  }
+  
+  // 手动刷新数据
+  function refreshData() {
+    loadProductsFromGitHub();
   }
 
+  // ============ 原有的UI更新函数 ============
   function updateSubCats() {
-    const mainVal = document.getElementById("mainCat").value;
+    const main = document.getElementById("mainCat").value;
     const sub = document.getElementById("subCat");
+    if (!sub) return;
     sub.innerHTML = "";
-    const subs = fullProductData.tree[mainVal];
-    if (subs) {
-      Object.keys(subs).forEach(s => sub.options.add(new Option(s, s)));
+    
+    if (!fullProductData[main]) {
+      console.warn('没有找到分类:', main);
+      return;
     }
+    
+    Object.keys(fullProductData[main]).forEach(s => sub.options.add(new Option(s, s)));
     updateModels();
   }
-
+  
   function updateModels() {
-    const mainVal = document.getElementById("mainCat").value;
-    const subVal = document.getElementById("subCat").value;
+    const main = document.getElementById("mainCat").value;
+    const sub = document.getElementById("subCat").value;
     const model = document.getElementById("modelSelect");
     model.innerHTML = "";
-    const models = fullProductData.tree[mainVal][subVal];
-    if (models) {
-      models.forEach(m => model.options.add(new Option(m, m)));
-    }
+    
+    if (!fullProductData[main] || !fullProductData[main][sub]) return;
+    
+    fullProductData[main][sub].forEach(m => model.options.add(new Option(m, m)));
   }
 
-  // 4. 自动布局计算
   function autoPlan() {
     const order = Number(document.getElementById("orderQty").value);
     if (!order || order <= 0) return;
-    let bestW = Math.ceil(Math.sqrt(order * 2)); // 默认大致 2:1
-    let bestH = Math.ceil(order / bestW);
+    
+    let bestW = 0, bestH = 0, bestScore = -Infinity;
+    const targetRatio = 2.0; 
+
+    for (let h = 1; h <= 20; h++) {
+        let w = Math.floor(order / h);
+        if (w === 0) continue;
+        let currentLayout = w * h;
+        let currentRatio = w / h;
+        
+        let coverage = currentLayout / order; 
+        let ratioMatch = 1 / (1 + Math.abs(currentRatio - targetRatio));
+        let score = (coverage * 70) + (ratioMatch * 30);
+
+        if (currentLayout === order && Math.abs(currentRatio - targetRatio) < 0.1) score += 100;
+
+        if (score > bestScore) {
+            bestScore = score;
+            bestW = w;
+            bestH = h;
+        }
+    }
     document.getElementById("width").value = bestW;
     document.getElementById("height").value = bestH;
   }
 
-  // 5. 生成 BOM 核心逻辑
   function generate() {
     const orderQty = Number(document.getElementById("orderQty").value);
     if (!orderQty) return alert("Please enter Order Total");
     
-    const modelName = document.getElementById("modelSelect").value;
     const w = Number(document.getElementById("width").value);
     const h = Number(document.getElementById("height").value);
+    const model = document.getElementById("modelSelect").value;
     const voltage = document.getElementById("voltage").value;
     const brand = document.getElementById("controllerBrand").value;
     const packing = document.getElementById("packaging").value;
 
-    // 获取 JSON 中的物料详情
-    const info = fullProductData.details[modelName];
-    if (!info) return alert("Product data missing!");
-
     let listHtml = "";
-    const addItem = (code, desc, qty, unit, basis) => {
-      listHtml += `<tr>
-        <td><strong>[${code}]</strong> ${desc}</td>
-        <td><strong>${qty}</strong></td>
-        <td>${unit} <span class="${basis==='ORDER'?'tag-order':'tag-layout'}">${basis}</span></td>
-      </tr>`;
+    const addItem = (name, qty, basis) => {
+      listHtml += `<tr><td>${name}</td><td><strong>${qty}</strong></td><td><span class="${basis==='ORDER'?'tag-order':'tag-layout'}">${basis}</span></td></tr>`;
     };
 
-    // --- 开始组装清单 ---
-    // 1. 主屏信息（引用 JSON 数据）
-    addItem(info.code, info.desc, orderQty, info.unit, "ORDER");
-
-    // 2. 包装系统
+    addItem(`ROE ${model} LED Panel (${voltage})`, orderQty, "ORDER");
     const pQty = packing === "FlightCase" ? Math.ceil(orderQty/6) : (packing === "Dolly" ? Math.ceil(orderQty/12) : orderQty);
-    addItem("PACK-SYS", `${packing} Packaging System`, pQty, "EA", "ORDER");
+    addItem(`${packing} System`, pQty, "ORDER");
+    addItem("Standard Spare Parts Kit", Math.ceil(orderQty * 0.02), "ORDER");
+    addItem(document.getElementById("installType").value === "Hanging" ? "Hanging Bar" : "Stacking Base", w, "LAYOUT");
+    addItem(`Main Power Cable (${voltage})`, w, "LAYOUT");
+    addItem(`${brand} Video Processor`, document.getElementById("procRedundancy").checked ? 2 : 1, "LAYOUT");
 
-    // 3. 备件包
-    addItem("SPARE-KIT", "Standard Spare Parts Kit (2%)", Math.ceil(orderQty * 0.02), "KIT", "ORDER");
-
-    // 4. 结构配件
-    const installType = document.getElementById("installType").value;
-    addItem("STRUCT-01", installType === "Hanging" ? "Hanging Bar" : "Stacking Base", w, "PCS", "LAYOUT");
-
-    // 5. 线缆与处理器
-    addItem("CABLE-PWR", `Main Power Cable (${voltage})`, w, "PCS", "LAYOUT");
-    addItem("PROC-VID", `${brand} Video Processor`, document.getElementById("procRedundancy").checked ? 2 : 1, "SET", "LAYOUT");
-
-    // 更新 UI
     document.getElementById("bomList").innerHTML = listHtml;
     document.getElementById("dashboard").style.display = "grid";
     document.getElementById("bomFooter").style.display = "flex";
@@ -280,11 +358,23 @@
   }
 
   function exportToExcel() {
-    alert("Exporting BOM to Excel...");
+    alert("Exporting Data to Excel...");
   }
-
-  // 页面启动加载数据
-  window.onload = fetchDataSource;
+  
+  // 初始化下拉菜单（先设置空选项，等数据加载完成后再填充）
+  function initSelects() {
+    const mainSelect = document.getElementById("mainCat");
+    if (mainSelect) {
+      mainSelect.innerHTML = '';
+      // 先添加空选项，数据加载后会更新
+    }
+  }
+  
+  // 页面启动
+  (async function() {
+    initSelects();
+    await loadProductsFromGitHub();
+  })();
 </script>
 </body>
 </html>
